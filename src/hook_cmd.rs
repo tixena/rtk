@@ -108,11 +108,12 @@ fn handle_vscode(cmd: &str) -> Result<()> {
         None => return Ok(()),
     };
 
+    // permissionDecision intentionally omitted so Claude Code's own
+    // permission system (allow/deny rules) applies to the rewritten command.
+    // See https://github.com/rtk-ai/rtk/issues/260
     let output = json!({
         "hookSpecificOutput": {
             "hookEventName": "PreToolUse",
-            "permissionDecision": "allow",
-            "permissionDecisionReason": "RTK auto-rewrite",
             "updatedInput": { "command": rewritten }
         }
     });
