@@ -1,3 +1,5 @@
+//! Matches shell commands against known RTK rewrite rules to decide how to handle them.
+
 use lazy_static::lazy_static;
 use regex::{Regex, RegexSet};
 
@@ -327,9 +329,34 @@ pub fn strip_disabled_prefix(cmd: &str) -> &str {
     trimmed[prefix_len..].trim_start()
 }
 
-/// Rewrite a raw command to its RTK equivalent.
-///
-/// Returns `Some(rewritten)` if the command has an RTK equivalent or is already RTK.
+lazy_static! {
+    // Match trailing shell redirections:
+    // Alt 1: N>&M or N>&- (fd redirect/close): 2>&1, 1>&2, 2>&-
+    // Alt 2: &>file or &>>file (bash redirect both): &>/dev/null
+    // Alt 3: N>file or N>>file (fd to file): 2>/dev/null, >/tmp/out, 1>>log
+    // Note: [^(\\s] excludes process substitutions like >(tee) from false-positive matching
+    static ref TRAILING_REDIRECT: Regex =
+        Regex::new(r"\s+(?:[0-9]?>&[0-9-]|&>>?\S+|[0-9]?>>?\s*[^(\s]\S*)\s*$").unwrap();
+}
+
+/// Strip trailing stderr/stdout redirects from a command segment (#530).
+/// Returns (command_without_redirects, redirect_suffix).
+fn strip_trailing_redirects(cmd: &str) -> (&str, &str) {
+    if let Some(m) = TRAILING_REDIRECT.find(cmd) {
+        // Verify redirect is not inside quotes (single-pass count)
+        let before = &cmd[..m.start()];
+        let (sq, dq) = before.chars().fold((0u32, 0u32), |(s, d), c| match c {
+            '\'' => (s + 1, d),
+            '"' => (s, d + 1),
+            _ => (s, d),
+        });
+        if sq % 2 == 0 && dq % 2 == 0 {
+            return (&cmd[..m.start()], &cmd[m.start()..]);
+        }
+    }
+    (cmd, "")
+}
+
 /// Returns `None` if the command is unsupported or ignored (hook should pass through).
 ///
 /// Handles compound commands (`&&`, `||`, `;`) by rewriting each segment independently.
@@ -565,8 +592,12 @@ fn rewrite_segment(seg: &str, excluded: &[String]) -> Option<String> {
         return None;
     }
 
+    // Strip trailing stderr/stdout redirects before matching (#530)
+    // e.g. "git status 2>&1" → match "git status", re-append " 2>&1"
+    let (cmd_part, redirect_suffix) = strip_trailing_redirects(trimmed);
+
     // Already RTK — pass through unchanged
-    if trimmed.starts_with("rtk ") || trimmed == "rtk" {
+    if cmd_part.starts_with("rtk ") || cmd_part == "rtk" {
         return Some(trimmed.to_string());
     }
 
@@ -574,21 +605,31 @@ fn rewrite_segment(seg: &str, excluded: &[String]) -> Option<String> {
     // Must intercept before generic prefix replacement, which would produce `rtk read -20 file`.
     // Only intercept when head has a flag (-N, --lines=N, -c, etc.); plain `head file` falls
     // through to the generic rewrite below and produces `rtk read file` as expected.
-    if trimmed.starts_with("head -") {
-        return rewrite_head_numeric(trimmed);
+    if cmd_part.starts_with("head -") {
+        return rewrite_head_numeric(cmd_part).map(|r| format!("{}{}", r, redirect_suffix));
     }
 
     // tail has several forms that are not compatible with generic prefix replacement.
     // Only rewrite recognized numeric line forms; otherwise skip rewrite.
-    if trimmed.starts_with("tail ") {
-        return rewrite_tail_lines(trimmed);
+    if cmd_part.starts_with("tail ") {
+        return rewrite_tail_lines(cmd_part).map(|r| format!("{}{}", r, redirect_suffix));
+    }
+
+    // Most cat flags (-v, -A, -e, -t, -s, -b, --show-all, etc.) have different
+    // semantics than rtk read or no equivalent at all. Only `-n` (line numbers)
+    // maps correctly to `rtk read -n`. Skip rewrite for any other flag.
+    if cmd_part.starts_with("cat ") {
+        let args = cmd_part["cat ".len()..].trim_start();
+        if args.starts_with('-') && !args.starts_with("-n ") && !args.starts_with("-n\t") {
+            return None;
+        }
     }
 
     // Use classify_command for correct ignore/prefix handling
-    let rtk_equivalent = match classify_command(trimmed) {
+    let rtk_equivalent = match classify_command(cmd_part) {
         Classification::Supported { rtk_equivalent, .. } => {
             // Check if the base command is excluded from rewriting (#243)
-            let base = trimmed.split_whitespace().next().unwrap_or("");
+            let base = cmd_part.split_whitespace().next().unwrap_or("");
             if excluded.iter().any(|e| e == base) {
                 return None;
             }
@@ -601,13 +642,13 @@ fn rewrite_segment(seg: &str, excluded: &[String]) -> Option<String> {
     let rule = RULES.iter().find(|r| r.rtk_cmd == rtk_equivalent)?;
 
     // Extract env prefix (sudo, env VAR=val, etc.)
-    let stripped_cow = ENV_PREFIX.replace(trimmed, "");
-    let env_prefix_len = trimmed.len() - stripped_cow.len();
-    let env_prefix = &trimmed[..env_prefix_len];
+    let stripped_cow = ENV_PREFIX.replace(cmd_part, "");
+    let env_prefix_len = cmd_part.len() - stripped_cow.len();
+    let env_prefix = &cmd_part[..env_prefix_len];
     let cmd_clean = stripped_cow.trim();
 
     // #345: RTK_DISABLED=1 in env prefix → skip rewrite entirely
-    if has_rtk_disabled_prefix(trimmed) {
+    if has_rtk_disabled_prefix(cmd_part) {
         return None;
     }
 
@@ -627,9 +668,9 @@ fn rewrite_segment(seg: &str, excluded: &[String]) -> Option<String> {
     for &prefix in rule.rewrite_prefixes {
         if let Some(rest) = strip_word_prefix(cmd_clean, prefix) {
             let rewritten = if rest.is_empty() {
-                format!("{}{}", env_prefix, rule.rtk_cmd)
+                format!("{}{}{}", env_prefix, rule.rtk_cmd, redirect_suffix)
             } else {
-                format!("{}{} {}", env_prefix, rule.rtk_cmd, rest)
+                format!("{}{} {}{}", env_prefix, rule.rtk_cmd, rest, redirect_suffix)
             };
             return Some(rewritten);
         }
@@ -1135,6 +1176,26 @@ mod tests {
     }
 
     #[test]
+    fn test_rewrite_cat_with_incompatible_flags_skipped() {
+        // cat flags with different semantics than rtk read — skip rewrite
+        assert_eq!(rewrite_command("cat -A file.cpp", &[]), None);
+        assert_eq!(rewrite_command("cat -v file.txt", &[]), None);
+        assert_eq!(rewrite_command("cat -e file.txt", &[]), None);
+        assert_eq!(rewrite_command("cat -t file.txt", &[]), None);
+        assert_eq!(rewrite_command("cat -s file.txt", &[]), None);
+        assert_eq!(rewrite_command("cat --show-all file.txt", &[]), None);
+    }
+
+    #[test]
+    fn test_rewrite_cat_with_compatible_flags() {
+        // cat -n (line numbers) maps to rtk read -n — allow rewrite
+        assert_eq!(
+            rewrite_command("cat -n file.txt", &[]),
+            Some("rtk read -n file.txt".into())
+        );
+    }
+
+    #[test]
     fn test_rewrite_rg_pattern() {
         assert_eq!(
             rewrite_command("rg \"fn main\"", &[]),
@@ -1282,6 +1343,35 @@ mod tests {
         assert_eq!(
             rewrite_command("cargo test &>/dev/null", &[]),
             Some("rtk cargo test &>/dev/null".into())
+        );
+    }
+
+    #[test]
+    fn test_rewrite_redirect_double() {
+        // Double redirect: only last one stripped, but full command rewrites correctly
+        assert_eq!(
+            rewrite_command("git status 2>&1 >/dev/null", &[]),
+            Some("rtk git status 2>&1 >/dev/null".into())
+        );
+    }
+
+    #[test]
+    fn test_rewrite_redirect_fd_close() {
+        // 2>&- (close stderr fd)
+        assert_eq!(
+            rewrite_command("git status 2>&-", &[]),
+            Some("rtk git status 2>&-".into())
+        );
+    }
+
+    #[test]
+    fn test_rewrite_redirect_quotes_not_stripped() {
+        // Redirect-like chars inside quotes should NOT be stripped
+        // Known limitation: apostrophes cause conservative no-strip (safe fallback)
+        let result = rewrite_command("git commit -m \"it's fixed\" 2>&1", &[]);
+        assert!(
+            result.is_some(),
+            "Should still rewrite even with apostrophe"
         );
     }
 
@@ -1516,6 +1606,27 @@ mod tests {
         assert_eq!(
             rewrite_command("docker run --rm ubuntu bash", &[]),
             Some("rtk docker run --rm ubuntu bash".into())
+        );
+    }
+
+    #[test]
+    fn test_classify_swift_test() {
+        assert!(matches!(
+            classify_command("swift test"),
+            Classification::Supported {
+                rtk_equivalent: "rtk swift",
+                category: "Build",
+                estimated_savings_pct: 90.0,
+                status: RtkStatus::Existing,
+            }
+        ));
+    }
+
+    #[test]
+    fn test_rewrite_swift_test() {
+        assert_eq!(
+            rewrite_command("swift test --parallel", &[]),
+            Some("rtk swift test --parallel".into())
         );
     }
 
@@ -2266,5 +2377,51 @@ mod tests {
         assert_eq!(strip_git_global_opts("git --no-pager log"), "git log");
         assert_eq!(strip_git_global_opts("git status"), "git status");
         assert_eq!(strip_git_global_opts("cargo test"), "cargo test");
+    }
+
+    // --- #wc: wc filter was silently ignored by the hook ---
+
+    #[test]
+    fn test_classify_wc_supported() {
+        // BUG: "wc " was in IGNORED_PREFIXES despite wc_cmd.rs having a full filter.
+        // This test documents the bug: it must FAIL before the fix and PASS after.
+        assert_eq!(
+            classify_command("wc -l src/main.rs"),
+            Classification::Supported {
+                rtk_equivalent: "rtk wc",
+                category: "Files",
+                estimated_savings_pct: 60.0,
+                status: RtkStatus::Existing,
+            }
+        );
+    }
+
+    #[test]
+    fn test_classify_wc_multi_file() {
+        assert_eq!(
+            classify_command("wc src/*.rs"),
+            Classification::Supported {
+                rtk_equivalent: "rtk wc",
+                category: "Files",
+                estimated_savings_pct: 60.0,
+                status: RtkStatus::Existing,
+            }
+        );
+    }
+
+    #[test]
+    fn test_rewrite_wc() {
+        assert_eq!(
+            rewrite_command("wc -l src/main.rs", &[]),
+            Some("rtk wc -l src/main.rs".into())
+        );
+    }
+
+    #[test]
+    fn test_rewrite_wc_multi_file() {
+        assert_eq!(
+            rewrite_command("wc src/*.rs", &[]),
+            Some("rtk wc src/*.rs".into())
+        );
     }
 }

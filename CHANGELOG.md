@@ -5,6 +5,67 @@ All notable changes to rtk (Rust Token Killer) will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.34.2](https://github.com/rtk-ai/rtk/compare/v0.34.1...v0.34.2) (2026-03-30)
+
+
+### Bug Fixes
+
+* **emots:** replace 📊 with "Summary:" ([495a152](https://github.com/rtk-ai/rtk/commit/495a152059feabc7b516b96e804757608b87a10a))
+* **refacto-codebase:** technical docs & sub folders ([927daef](https://github.com/rtk-ai/rtk/commit/927daef49b8f771d195201d196378e27e0ee8a2b))
+
+## [0.34.1](https://github.com/rtk-ai/rtk/compare/v0.34.0...v0.34.1) (2026-03-28)
+
+
+### Bug Fixes
+
+* **security:** missing toml pkg ([51f9c88](https://github.com/rtk-ai/rtk/commit/51f9c888b81169309df92f7fa3a6f705d44adcab))
+* **security:** salt device hash for telemetry ([32fdbbb](https://github.com/rtk-ai/rtk/commit/32fdbbbb6923c70d343fab14b4b0ce70424e610f))
+* **security:** set 0600 permissions on salt file ([5eae11d](https://github.com/rtk-ai/rtk/commit/5eae11d16410dc4ff26e97672e5367b14efaab76))
+* **telemetry:** cache salt in-process ([22dc059](https://github.com/rtk-ai/rtk/commit/22dc059310b0408adedc2d1228de339e16ea6c0a))
+* **telemetry:** docs + real info from "rtk init -g" ([33195cc](https://github.com/rtk-ai/rtk/commit/33195cc686318ddcca54edfdd1215bd9fd28f891))
+* **telemetry:** hash + salt ([92996b1](https://github.com/rtk-ai/rtk/commit/92996b127257eae16d3e17179592b2899f19254f))
+
+## [0.34.0](https://github.com/rtk-ai/rtk/compare/v0.33.1...v0.34.0) (2026-03-26)
+
+
+### Features
+
+* **init:** add --copilot flag for GitHub Copilot integration ([9e19aac](https://github.com/rtk-ai/rtk/commit/9e19aac75e790ecbfd1dc5b2d01786f6b9edf506)), closes [#823](https://github.com/rtk-ai/rtk/issues/823)
+
+
+### Bug Fixes
+
+* **diff:** correct truncation overflow count in condense_unified_diff ([5399f83](https://github.com/rtk-ai/rtk/commit/5399f836a5c642121f0f6e7812ff4131d84d0509))
+* **diff:** never truncate diff content — show all changes in full ([80fc29a](https://github.com/rtk-ai/rtk/commit/80fc29a839f51ef605474037e1a8fd86b4aac05a)), closes [#827](https://github.com/rtk-ai/rtk/issues/827)
+* **git:** replace vague truncation markers with exact counts ([185fb97](https://github.com/rtk-ai/rtk/commit/185fb97061517922ea5844d8c6008f2eb86fd55d))
+* **merge:** resolve conflict with develop in diff_cmd.rs ([6a5ae14](https://github.com/rtk-ai/rtk/commit/6a5ae1484b32c38bd99baca925175ae610e3d1e3))
+* **read:** default to no filtering — show full file content ([5e0f3ba](https://github.com/rtk-ai/rtk/commit/5e0f3ba774eab52f8ca2ac603e2ae4eae79b2edc)), closes [#822](https://github.com/rtk-ai/rtk/issues/822)
+* **read:** detect binary files and prevent empty output on filter failure ([8886c14](https://github.com/rtk-ai/rtk/commit/8886c14c9cf97fb4413efec3be8e50fdb84824e9)), closes [#822](https://github.com/rtk-ai/rtk/issues/822)
+* rewrite swift test commands ([599ad25](https://github.com/rtk-ai/rtk/commit/599ad25deb0f8dc9ecab37f4bbe26324dac07b2e))
+* truncation accuracy + Copilot init + binary file detection ([966bcbe](https://github.com/rtk-ai/rtk/commit/966bcbe638be18bbaba4298df985804643f82c85))
+* **truncation:** accurate overflow counts and omission indicators ([58a9633](https://github.com/rtk-ai/rtk/commit/58a963347467613d48db05ad56bc8f1f3a06b65d))
+
+## [Unreleased]
+
+### Bug Fixes
+
+* **wc:** `wc` filter was never invoked by the hook — removed `"wc "` from `IGNORED_PREFIXES` and added registry entry so `wc` commands are rewritten to `rtk wc`
+* **diff:** correct truncation overflow count in condense_unified_diff ([#833](https://github.com/rtk-ai/rtk/pull/833)) ([5399f83](https://github.com/rtk-ai/rtk/commit/5399f83))
+* **git:** replace vague truncation markers with exact counts in log and grep output ([#833](https://github.com/rtk-ai/rtk/pull/833)) ([185fb97](https://github.com/rtk-ai/rtk/commit/185fb97))
+
+## [0.33.1](https://github.com/rtk-ai/rtk/compare/v0.33.0...v0.33.1) (2026-03-25)
+
+
+### Bug Fixes
+
+* **cicd:** dev- prefix for pre-release tags ([522bd64](https://github.com/rtk-ai/rtk/commit/522bd648c8cae41f6cadedcd40a96d879c6ecf0a))
+* **cicd:** use dev- prefix for pre-release tags ([9c21275](https://github.com/rtk-ai/rtk/commit/9c212752fc0401820f8665198f00882684496175))
+* **cicd:** use dev- prefix for pre-release tags to avoid polluting release-please ([32c67e0](https://github.com/rtk-ai/rtk/commit/32c67e01326374f0365602f61542a3639a8f121b))
+* hook security + stderr redirects + version bump ([#807](https://github.com/rtk-ai/rtk/issues/807)) ([0649e97](https://github.com/rtk-ai/rtk/commit/0649e974fb8f27778ef0d22aa97905d9ebc8f03c))
+* **hook:** respect Claude Code deny/ask permission rules on rewrite ([a051a6f](https://github.com/rtk-ai/rtk/commit/a051a6f5e56c7ee59375a365580bced634e29c02))
+* strip trailing stderr redirects before rewrite matching ([#530](https://github.com/rtk-ai/rtk/issues/530)) ([edd9c02](https://github.com/rtk-ai/rtk/commit/edd9c02e892b297a7e349031b61ef971c982b53d))
+* strip trailing stderr redirects before rewrite matching ([#530](https://github.com/rtk-ai/rtk/issues/530)) ([36a6f48](https://github.com/rtk-ai/rtk/commit/36a6f482296d6fc85f8116040a16de2e128733f8))
+
 ## [0.33.0-rc.54](https://github.com/rtk-ai/rtk/compare/v0.32.0-rc.54...v0.33.0-rc.54) (2026-03-24)
 
 
@@ -42,6 +103,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Bug Fixes
 
+* **hook:** respect Claude Code deny/ask permission rules on rewrite — hook now checks settings.json before rewriting commands, preventing bypass of user-configured deny/ask permissions
+* **git:** replace symbol prefixes (`* branch`, `+ Staged:`, `~ Modified:`, `? Untracked:`) with plain lowercase labels (`branch:`, `staged:`, `modified:`, `untracked:`) in git status output
 * **ruby:** use `rails test` instead of `rake test` when positional file args are passed — `rake test` ignores positional files and only supports `TEST=path`
 
 ### Features
@@ -199,6 +262,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Bug Fixes
 
+* **cargo clippy:** include actionable error details in compact output instead of summary-only counts ([#602](https://github.com/rtk-ai/rtk/issues/602))
 * **curl:** skip JSON schema replacement when schema is larger than original payload ([#297](https://github.com/rtk-ai/rtk/issues/297))
 * **toml-dsl:** fix regex overmatch on `tofu-plan/init/validate/fmt` and `mix-format/compile` — add `(\s|$)` word boundary to prevent matching subcommands (e.g. `tofu planet`, `mix formats`) ([#349](https://github.com/rtk-ai/rtk/issues/349))
 * **toml-dsl:** remove 3 dead built-in filters (`docker-inspect`, `docker-compose-ps`, `pnpm-build`) — Clap routes these commands before `run_fallback`, so the TOML filters never fire ([#351](https://github.com/rtk-ai/rtk/issues/351))
